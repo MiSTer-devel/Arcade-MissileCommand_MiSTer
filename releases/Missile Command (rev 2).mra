@@ -4,7 +4,7 @@
 	<setname>missile2</setname>
 	<year>1980</year>
 	<manufacturer>Atari Games</manufacturer>
-	<rbf>Arcade-MissileCommand</rbf>
+	<rbf>MissileCommand</rbf>
 	<switches default="00 00">
 		<dip bits="0,1" ids="English,French,German,Spanish" name="Language" values="0,1,2,3"></dip>
 		<dip bits="2,3" ids="1 Coin 1 Credit,2 Coins 1 Credit,Free Play,1 Coin 2 Credits" name="Coinage" values="0,1,2,3"></dip>
