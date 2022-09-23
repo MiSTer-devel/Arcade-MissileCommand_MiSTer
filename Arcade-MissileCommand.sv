@@ -210,7 +210,7 @@ localparam CONF_STR = {
 	"OKN,Analog Video V-Pos,0,-1,-2,-3,-4,-5,-6,-7,4,3,2,1;",
 	"-;",
 	"OEF,Mouse/trackball speed,25%,50%,100%,200%;",
-	"OBC,Button order,LMR,LRM,MRL;",
+	"OBC,Button order,LMR,LRM,MRL,MLR;",
 	"OR,Joystick mode,Digital,Analog;",
 	"OD,Joystick speed,Low,High;",
 	"-;",
@@ -256,7 +256,6 @@ wire [24:0]	ioctl_addr;
 wire  [7:0]	ioctl_dout;
 wire  [7:0]	ioctl_din;
 wire  [7:0]	ioctl_index;
-wire		ioctl_wait;
 wire [15:0]	joystick_0, joystick_1;
 wire [15:0] joystick_l_analog_0;
 wire [15:0] joystick_r_analog_0;
@@ -287,7 +286,6 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.ioctl_dout(ioctl_dout),
 	.ioctl_din(ioctl_din),
 	.ioctl_index(ioctl_index),
-	.ioctl_wait(ioctl_wait),
 
 	.joystick_0(joystick_0),
 	.joystick_1(joystick_1),
@@ -324,6 +322,9 @@ wire [7:0]	switches = { dip_cocktail, dip_bonuscity, dip_trackballspeed, dip_bon
 reg mouse_left = 1'b0;
 reg mouse_center = 1'b0;
 reg mouse_right = 1'b0;
+
+wire [15:0] joystick_analog = joystick_l_analog_0 | joystick_r_analog_0;
+
 always @(posedge clk_sys)
 begin
 	case(status[12:11])
@@ -344,6 +345,12 @@ begin
 		mouse_left <= ps2_mouse[2];
 		mouse_center <= ps2_mouse[1];
 		mouse_right <= ps2_mouse[0];
+	end
+	2'd3: // MLR
+	begin
+		mouse_left <= ps2_mouse[2];
+		mouse_center <= ps2_mouse[0];
+		mouse_right <= ps2_mouse[1];
 	end
 	endcase
 end
@@ -369,7 +376,7 @@ trackball trackball
 	.flip(flip),
 	.joystick(joy[3:0]),
 	.joystick_mode(status[27]),
-	.joystick_analog(joystick_l_analog_0 !=0 ? joystick_l_analog_0 : joystick_r_analog_0),
+	.joystick_analog(joystick_analog),
 	.joystick_sensitivity(status[13]),
 	.mouse_speed(status[15:14]),
 	.ps2_mouse(ps2_mouse),
