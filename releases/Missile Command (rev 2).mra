@@ -3,6 +3,7 @@
 	<mameversion>0240</mameversion>
 	<setname>missile2</setname>
 	<year>1980</year>
+	<rotation>horizontal</rotation>
 	<manufacturer>Atari Games</manufacturer>
 	<rbf>MissileCommand</rbf>
 	<switches default="00 00">
