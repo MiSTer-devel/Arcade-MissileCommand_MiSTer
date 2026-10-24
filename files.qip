@@ -12,4 +12,10 @@ set_global_assignment -name VERILOG_FILE rtl/JTFRAME/jtframe_resync.v
 set_global_assignment -name VERILOG_FILE rtl/bc6502/bc6502.v
 set_global_assignment -name VERILOG_FILE rtl/bc6502/addsub.v
 set_global_assignment -name QIP_FILE rtl/pokey/pokey.qip
+set_global_assignment -name VERILOG_FILE rtl/jt49/jt49.v
+set_global_assignment -name VERILOG_FILE rtl/jt49/jt49_cen.v
+set_global_assignment -name VERILOG_FILE rtl/jt49/jt49_div.v
+set_global_assignment -name VERILOG_FILE rtl/jt49/jt49_eg.v
+set_global_assignment -name VERILOG_FILE rtl/jt49/jt49_exp.v
+set_global_assignment -name VERILOG_FILE rtl/jt49/jt49_noise.v
 set_global_assignment -name SYSTEMVERILOG_FILE Arcade-MissileCommand.sv

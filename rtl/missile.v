@@ -25,6 +25,7 @@ module missile(
 	input				ce_5M,
 	input				reset,
 	input				pause,
+	input				bootleg,	// Missile Combat bootleg hardware (Videotron/Sidam)
 	
 	input				vtb_dir1,
 	input				vtb_clk1,
@@ -48,6 +49,7 @@ module missile(
 	input				p2_fire_r,
 
 	input		 [7:0]	in2,
+	input		 [7:0]	in3,
 	input		 [7:0]	switches,
 
 	input				self_test,
@@ -192,7 +194,8 @@ wire s_mem_write = ~(s_WRITE_n | s_NIO_n);
 assign s_OUT_n = ~(s_mem_write && s_addr[15:8] == 8'b01001000);
 assign s_COLRAM_n = ~(s_mem_write && s_addr[15:8] == 8'b01001011);
 assign s_WDOG_n = ~(s_mem_write && (s_addr == 16'h4C00));
-assign s_INTACK_n = ~(s_mem_write && (s_addr == 16'h4D00));
+// Bootleg acknowledges the IRQ by writing $4Axx instead of $4D00
+assign s_INTACK_n = ~(s_mem_write && (bootleg ? s_addr[15:8] == 8'h4A : s_addr == 16'h4D00));
 
 // ROM upload enables
 // ----------------------------------
@@ -210,15 +213,19 @@ wire in0_cs = s_addr[14:8] == 7'b1001000;
 wire in1_cs = s_addr[14:8] == 7'b1001001;
 // IN2 $4A00-$4AFF
 wire in2_cs = s_addr[14:8] == 7'b1001010;
+// Bootleg second DIP bank $4B00-$4BFF
+// bits 0-1 starting cities (6/4/5/7), 2-3 language (EN/FR/DE/IT), 4-6 bonus city, 7 cursor speed
+wire in3_cs = s_addr[14:8] == 7'b1001011;
 
 assign s_db_in = ~s_PROGSEL_n[0] ? s_pgrom0_out :
 				~s_PROGSEL_n[1] ? s_pgrom1_out :
 				~s_PROGSEL_n[2] ? s_pgrom2_out :
 				s_MADSEL ? s_VRAM_in :
-				~s_POKEY_n ? s_pokey_out :
+				~s_POKEY_n ? (bootleg ? s_ay_out : s_pokey_out) :
 				~s_RAM_n ? vram_data_out :
 				in0_cs ? in0 :
 				in1_cs ? in1 :
+				(bootleg & in3_cs) ? in3 :
 				in2_cs ? in2 :
 				~s_COLRAM_n ? { 4'b0, s_cram_out} :
 				8'bXXXXXXXX;
@@ -569,7 +576,7 @@ pokey pokey(
 	.enable_179(1'b1),
 	.addr(s_addr[3:0]),
 	.data_in(s_db_out),
-	.wr_en(~s_br_w_n & ~s_POKEY_n),
+	.wr_en(~s_br_w_n & ~s_POKEY_n & ~bootleg),
 	.reset_n(~reset),
 	.data_out(s_pokey_out),
 	.pot_in(switches),
@@ -578,7 +585,45 @@ pokey pokey(
 	.channel_2_out(pokey_ch2),
 	.channel_3_out(pokey_ch3)
 );
-assign audio_o = ({1'b0,pokey_ch0,1'b0}+{1'b0,pokey_ch1,1'b0})+({1'b0,pokey_ch2,1'b0}+{1'b0,pokey_ch3,1'b0});
+
+// AY-3-8912 (bootleg): registers mapped flat at $4000-$400F, output latch on I/O port A
+wire [7:0]	s_ay_out;
+wire [7:0]	s_ay_ioa;
+wire [9:0]	s_ay_sound;
+reg  [2:0]	ay_cen_cnt = 3'b0;
+always @(posedge clk_10M) ay_cen_cnt <= ay_cen_cnt + 3'b1;
+wire		ay_cen = ay_cen_cnt == 3'b0;	// 1.25 MHz
+
+// COMP(3) compresses the exponential DAC curve: the game only writes
+// volumes 1-6, inaudible through the plain curve
+jt49 #(.COMP(3'd3)) ay8912(
+	.rst_n(~reset),
+	.clk(clk_10M),
+	.clk_en(ay_cen),
+	.addr(s_addr[3:0]),
+	.cs_n(s_POKEY_n | ~bootleg),
+	// s_WRITE_n is the phase-gated write strobe (phi0 & hcnt[0] & write):
+	// address and data are stable while it is low. Using raw R/W here lets
+	// jt49 latch garbage during bus transitions (registers get scribbled).
+	.wr_n(s_WRITE_n),
+	.din(s_db_out),
+	.sel(1'b1),
+	.dout(s_ay_out),
+	.sound(s_ay_sound),
+	.A(),
+	.B(),
+	.C(),
+	.sample(),
+	.IOA_in(8'hFF),
+	.IOA_out(s_ay_ioa),
+	.IOA_oe(),
+	.IOB_in(8'hFF),
+	.IOB_out(),
+	.IOB_oe()
+);
+
+assign audio_o = bootleg ? (|s_ay_sound[9:8] ? 6'h3F : s_ay_sound[7:2]) :
+	({1'b0,pokey_ch0,1'b0}+{1'b0,pokey_ch1,1'b0})+({1'b0,pokey_ch2,1'b0}+{1'b0,pokey_ch3,1'b0});
 
 
 // Outputs
@@ -591,13 +636,18 @@ end
 
 //wire s_FLIP = s_F9[6];
 wire s_FLIP = 1'b1;
-wire s_CTRLD_n = s_F9[0];
+// Bootleg drives the output latch through AY I/O port A instead of F9
+wire s_CTRLD_n = bootleg ? s_ay_ioa[0] : s_F9[0];
 assign flip = s_FLIP;
 
 // Inputs
 // ------
-wire [7:0] in0 = !s_CTRLD_n ? { ~coin, 2'b11, ~p1_start, ~p2_start, ~p2_fire_l, ~p2_fire_c, ~p2_fire_r } : {tb_count_v, tb_count_h};
-wire [7:0] in1 = { v_blank, ~self_test, ~slam, 1'b1, 1'b1, ~p1_fire_l, ~p1_fire_c, ~p1_fire_r };
+// Bootleg inputs are wired active high (the program reads IN0 xor 0xff and IN1 xor 0x67)
+wire [7:0] in0_buttons = bootleg ? { coin, 2'b00, p1_start, p2_start, p2_fire_l, p2_fire_c, p2_fire_r }
+								 : { ~coin, 2'b11, ~p1_start, ~p2_start, ~p2_fire_l, ~p2_fire_c, ~p2_fire_r };
+wire [7:0] in0 = !s_CTRLD_n ? in0_buttons : {tb_count_v, tb_count_h};
+wire [7:0] in1 = bootleg ? { v_blank, self_test, slam, 1'b0, 1'b0, p1_fire_l, p1_fire_c, p1_fire_r }
+						 : { v_blank, ~self_test, ~slam, 1'b1, 1'b1, ~p1_fire_l, ~p1_fire_c, ~p1_fire_r };
 
 wire tb_dir_v, tb_clk_v, tb_dir_h, tb_clk_h;
 reg [3:0] tb_count_v;
